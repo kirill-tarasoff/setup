@@ -6,3 +6,5 @@ disk_to_encrypt: false  # Default disk to encrypt (empty by default)
 partition_to_encrypt: false  # Default partition to encrypt (empty by default)
 
 encrypt_pass: "example_pass"
+
+new_interface_name: "net0"

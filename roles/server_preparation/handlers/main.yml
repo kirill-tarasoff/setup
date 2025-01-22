@@ -1,0 +1,6 @@
+---
+# Handlers for the role
+- name: Restart networking
+  ansible.builtin.service:
+    name: network
+    state: restarted
