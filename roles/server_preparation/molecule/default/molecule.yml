@@ -1,0 +1,39 @@
+---
+driver:
+  name: docker
+
+platforms:
+  - name: instance
+    image: "pycontribs/ubuntu"
+    privileged: true
+
+provisioner:
+  name: ansible
+  env:
+    ANSIBLE_LIBRARY: .
+    # ANSIBLE_VERBOSITY: 3
+  options:
+    vvv: true
+    diff: true
+  config_options:
+    defaults:
+      stdout_callback: yaml
+      force_color: true
+      callbacks_enabled: ansible.posix.profile_tasks
+
+verifier:
+  name: ansible
+  lint:
+    name: ansible-lint
+
+scenario:
+  name: default
+  test_sequence:
+    - cleanup
+    - destroy
+    - dependency
+    - create
+    - converge
+    - verify
+    - cleanup
+    - destroy

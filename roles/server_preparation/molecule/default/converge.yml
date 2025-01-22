@@ -1,0 +1,6 @@
+# Molecule testing configuration files
+---
+- name: Converge
+  hosts: all
+  roles:
+    - role: server_preparation

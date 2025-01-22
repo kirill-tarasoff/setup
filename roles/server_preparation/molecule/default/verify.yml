@@ -1,0 +1,39 @@
+---
+- name: Verify server configuration
+  hosts: all
+  tasks:
+    - name: Verify disk encryption
+      ansible.builtin.command:
+        cmd: "cryptsetup status encrypted_disk"
+      register: disk_encryption_status
+
+    - name: Verify disk encryption output
+      ansible.builtin.debug:
+        var: disk_encryption_status.stdout
+
+    - name: Verify partition encryption
+      ansible.builtin.command:
+        cmd: "cryptsetup status encrypted_partition"
+      register: partition_encryption_status
+
+    - name: Verify partition encryption output
+      ansible.builtin.debug:
+        var: partition_encryption_status.stdout
+
+    - name: Verify CPU performance mode
+      ansible.builtin.shell:
+        cmd: "cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor"
+      register: cpu_performance_mode
+
+    - name: Output CPU performance mode
+      ansible.builtin.debug:
+        var: cpu_performance_mode.stdout_lines
+
+    - name: Verify renamed network interface
+      ansible.builtin.command:
+        cmd: "ip addr show net0"
+      register: net0_status
+
+    - name: Output renamed network interface information
+      ansible.builtin.debug:
+        var: net0_status.stdout

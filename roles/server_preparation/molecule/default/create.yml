@@ -1,0 +1,16 @@
+---
+- name: Create
+  hosts: localhost
+  tasks:
+    - name: Create docker container for testing
+      community.docker.docker_container:
+        name: molecule_instance
+        image: geerlingguy/docker-ubuntu2204-ansible
+        state: started
+        privileged: true
+        detach: true
+    - name: Install Python, Ansible, and Molecule dependencies
+      ansible.builtin.shell: |
+        apt-get update && \
+        apt-get install -y python3 python3-pip ansible molecule ansible-lint
+      delegate_to: localhost

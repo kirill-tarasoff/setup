@@ -1,0 +1,7 @@
+---
+# Ansible playbook to prepare a server for work
+- name: Prepare server for work
+  hosts: all
+  become: true
+  roles:
+    - role: server_preparation

@@ -1,0 +1,161 @@
+---
+# Install necessary packages for encryption, disk operations, and system information retrieval
+- name: Install required packages
+  ansible.builtin.package:
+    name:
+      - cryptsetup
+      - util-linux
+      - lshw
+    state: present
+  register: package_install_result
+
+- name: Check package installation result
+  ansible.builtin.debug:
+    msg: "Packages installed successfully."
+  when: package_install_result is succeeded
+
+# Ensure encryption variables are set before proceeding with encryption tasks
+- name: Check if encryption variables are set
+  ansible.builtin.debug:
+    msg: "Encryption variables are not set. Skipping encryption tasks."
+  when: "disk_to_encrypt == false and partition_to_encrypt == false"
+
+# Conditional tasks for disk encryption
+- name: Ensure disk encryption is set
+  when: disk_to_encrypt != false
+  block:
+    - name: Check if the additional disk is already encrypted
+      ansible.builtin.command:
+        cmd: "cryptsetup isLuks {{ disk_to_encrypt }}"
+      register: is_luks_disk
+      ignore_errors: true
+
+    - name: Encrypt additional disk
+      ansible.builtin.command:
+        cmd: "cryptsetup luksFormat {{ disk_to_encrypt }} --batch-mode"
+      when: is_luks_disk.rc != 0
+
+    - name: Debug disk encryption
+      ansible.builtin.debug:
+        msg: "Disk encrypted successfully."
+      when: is_luks_disk.rc != 0
+
+    - name: Open encrypted disk
+      ansible.builtin.command:
+        cmd: "cryptsetup open {{ disk_to_encrypt }} encrypted_disk"
+
+    - name: Create filesystem on encrypted disk
+      ansible.builtin.command:
+        cmd: "mkfs.ext4 /dev/mapper/encrypted_disk"
+        creates: "/dev/mapper/encrypted_disk"
+  rescue:
+    - name: Print when errors
+      ansible.builtin.debug:
+        msg: "Failed disk encryption"
+
+# Conditional tasks for partition encryption
+- name: Ensure partition encryption is set
+  when: partition_to_encrypt != false
+  block:
+    - name: Check if the partition is already encrypted
+      ansible.builtin.command:
+        cmd: "cryptsetup isLuks {{ partition_to_encrypt }}"
+      register: is_luks_partition
+      ignore_errors: true
+
+    - name: Encrypt partition
+      ansible.builtin.command:
+        cmd: "cryptsetup luksFormat {{ partition_to_encrypt }} --batch-mode"
+      when: is_luks_partition.rc != 0
+
+    - name: Debug partition encryption
+      ansible.builtin.debug:
+        msg: "Partition encrypted successfully."
+      when: is_luks_partition.rc != 0
+
+    - name: Open encrypted partition
+      ansible.builtin.command:
+        cmd: "cryptsetup open {{ partition_to_encrypt }} encrypted_partition"
+
+    - name: Create filesystem on encrypted partition
+      ansible.builtin.command:
+        cmd: "mkfs.ext4 /dev/mapper/encrypted_partition"
+        creates: "/dev/mapper/encrypted_partition"
+  rescue:
+    - name: Print when errors
+      ansible.builtin.debug:
+        msg: "Failed partition encryption"
+
+# Disable CPU power-saving C-states by modifying GRUB configuration.
+- name: Disable CPU C-states
+  ansible.builtin.lineinfile:
+    path: /etc/default/grub
+    regexp: '^GRUB_CMDLINE_LINUX="(.*)"'
+    line: 'GRUB_CMDLINE_LINUX="\1 intel_idle.max_cstate=0"'
+    backrefs: yes
+
+- name: Debug C-state disabling
+  ansible.builtin.debug:
+    msg: "CPU C-states disabled in GRUB configuration."
+
+# Apply changes to GRUB to disable C-states.
+- name: Apply GRUB changes
+  ansible.builtin.command: update-grub
+
+- name: Debug GRUB update
+  ansible.builtin.debug:
+    msg: "GRUB configuration updated successfully."
+
+# Switch CPUs from power-saving mode to performance mode.
+- name: Switch CPU to performance mode
+  ansible.builtin.shell:
+    cmd: "for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo 'performance' > $cpu; done"
+    warn: false
+
+- name: Debug CPU performance mode
+  ansible.builtin.debug:
+    msg: "CPU switched to performance mode."
+
+# Get default interface
+- name: Get default interface
+  ansible.builtin.command:
+    cmd: "ip -j route | jq -r '.[] | select(.dst == \"default\") | .dev'"
+    warn: false
+  register: default_iface
+
+- name: Debug default interface
+  ansible.builtin.debug:
+    msg: "Default interface: {{ default_iface.stdout }}"
+
+# Rename the active network interface to "net0" for configuration consistency.
+- name: Rename network interface to net0
+  ansible.builtin.command:
+    cmd: "ip link set {{ default_iface.stdout }} name net0"
+    warn: false
+
+- name: Debug network interface rename
+  ansible.builtin.debug:
+    msg: "Network interface renamed to net0."
+
+# Display information about the renamed network interface for verification.
+- name: Show renamed interface
+  ansible.builtin.command:
+    cmd: "ip addr show net0"
+  register: interface_info
+
+# Output the network interface information to the console for the user.
+- name: Output renamed interface information
+  ansible.builtin.debug:
+    var: interface_info.stdout
+
+# Display CPU model and Hyper-Threading support information.
+- name: Show CPU and Hyper-Threading information
+  ansible.builtin.command:
+    cmd: "lscpu | grep -E 'Model name|Thread(s) per core'"
+  check_mode: true
+  register: cpu_info
+
+# Output CPU and Hyper-Threading support information.
+- name: Output CPU information
+  ansible.builtin.debug:
+    var: cpu_info.stdout
