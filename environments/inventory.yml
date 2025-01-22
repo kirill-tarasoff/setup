@@ -2,7 +2,7 @@
 all:
   hosts:
     server1:
-      ansible_host: 0.0.0.0
+      ansible_host: x.x.x.x
       ansible_user: ubuntu
-      # disk_to_encrypt: "/dev/sdb"  # Disk to encrypt, specified per host
+      disk_to_encrypt: "/dev/xvdf"  # Disk to encrypt, specified per host
       # partition_to_encrypt: "/dev/sda2"  # Partition near root to encrypt

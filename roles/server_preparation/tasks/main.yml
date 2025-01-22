@@ -24,30 +24,17 @@
 - name: Ensure disk encryption is set
   when: disk_to_encrypt != false
   block:
-    - name: Check if the additional disk is already encrypted
-      ansible.builtin.command:
-        cmd: "cryptsetup isLuks {{ disk_to_encrypt }}"
-      register: is_luks_disk
-      ignore_errors: true
-
-    - name: Encrypt additional disk
-      ansible.builtin.command:
-        cmd: "cryptsetup luksFormat {{ disk_to_encrypt }} --batch-mode"
-      when: is_luks_disk.rc != 0
-
-    - name: Debug disk encryption
-      ansible.builtin.debug:
-        msg: "Disk encrypted successfully."
-      when: is_luks_disk.rc != 0
-
-    - name: Open encrypted disk
-      ansible.builtin.command:
-        cmd: "cryptsetup open {{ disk_to_encrypt }} encrypted_disk"
+    - name: Ensure disk encryption with LUKS
+      community.crypto.luks_device:
+        name: "encrypted_disk"
+        device: "{{ disk_to_encrypt }}"
+        state: opened
+        passphrase: "{{ encrypt_pass }}"
 
     - name: Create filesystem on encrypted disk
-      ansible.builtin.command:
-        cmd: "mkfs.ext4 /dev/mapper/encrypted_disk"
-        creates: "/dev/mapper/encrypted_disk"
+      ansible.builtin.filesystem:
+        fstype: ext4
+        dev: "/dev/mapper/encrypted_disk"
   rescue:
     - name: Print when errors
       ansible.builtin.debug:
@@ -57,34 +44,27 @@
 - name: Ensure partition encryption is set
   when: partition_to_encrypt != false
   block:
-    - name: Check if the partition is already encrypted
-      ansible.builtin.command:
-        cmd: "cryptsetup isLuks {{ partition_to_encrypt }}"
-      register: is_luks_partition
-      ignore_errors: true
-
-    - name: Encrypt partition
-      ansible.builtin.command:
-        cmd: "cryptsetup luksFormat {{ partition_to_encrypt }} --batch-mode"
-      when: is_luks_partition.rc != 0
-
-    - name: Debug partition encryption
-      ansible.builtin.debug:
-        msg: "Partition encrypted successfully."
-      when: is_luks_partition.rc != 0
-
-    - name: Open encrypted partition
-      ansible.builtin.command:
-        cmd: "cryptsetup open {{ partition_to_encrypt }} encrypted_partition"
+    - name: Ensure partition encryption with LUKS
+      community.crypto.luks_device:
+        name: "encrypted_partition"
+        device: "{{ partition_to_encrypt }}"
+        state: opened
+        passphrase: "{{ encrypt_pass }}"
 
     - name: Create filesystem on encrypted partition
-      ansible.builtin.command:
-        cmd: "mkfs.ext4 /dev/mapper/encrypted_partition"
-        creates: "/dev/mapper/encrypted_partition"
+      ansible.builtin.filesystem:
+        fstype: ext4
+        dev: "/dev/mapper/encrypted_partition"
   rescue:
     - name: Print when errors
       ansible.builtin.debug:
         msg: "Failed partition encryption"
+
+# Check CPU power-saving state
+- name: Ensure CPU C-states
+  ansible.builtin.slurp:
+    path: /etc/default/grub
+  register: grub_content
 
 # Disable CPU power-saving C-states by modifying GRUB configuration.
 - name: Disable CPU C-states
@@ -93,64 +73,70 @@
     regexp: '^GRUB_CMDLINE_LINUX="(.*)"'
     line: 'GRUB_CMDLINE_LINUX="\1 intel_idle.max_cstate=0"'
     backrefs: yes
-
-- name: Debug C-state disabling
-  ansible.builtin.debug:
-    msg: "CPU C-states disabled in GRUB configuration."
+  when: "'intel_idle.max_cstate=0' not in (grub_content.content | b64decode)"
 
 # Apply changes to GRUB to disable C-states.
 - name: Apply GRUB changes
-  ansible.builtin.command: update-grub
+  ansible.builtin.shell: update-grub
 
-- name: Debug GRUB update
-  ansible.builtin.debug:
-    msg: "GRUB configuration updated successfully."
+# Check scaling_governor status
+- name: Check if scaling_governor is available
+  ansible.builtin.stat:
+    path: /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+  register: governor_status
 
-# Switch CPUs from power-saving mode to performance mode.
-- name: Switch CPU to performance mode
+# Switch CPUs from power-saving mode to performance mode if applicable.
+- name: Set CPU to performance mode
   ansible.builtin.shell:
-    cmd: "for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo 'performance' > $cpu; done"
-    warn: false
+    cmd: "echo performance | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor"
+  when: governor_status.stat.exists
 
-- name: Debug CPU performance mode
-  ansible.builtin.debug:
-    msg: "CPU switched to performance mode."
+# Interface rename
+# It could be implemented with network-manager (nmcli ansible module),
+# but it's additional needed network-manager package
+- name: Interface renaming
+  block:
 
-# Get default interface
-- name: Get default interface
-  ansible.builtin.command:
-    cmd: "ip -j route | jq -r '.[] | select(.dst == \"default\") | .dev'"
-    warn: false
-  register: default_iface
+    # Get default interface
+    - name: Get default interface
+      ansible.builtin.shell:
+        cmd: ip -j route | jq -r '.[] | select(.dst == "default") | .dev'
+        warn: false
+      register: default_iface
 
-- name: Debug default interface
-  ansible.builtin.debug:
-    msg: "Default interface: {{ default_iface.stdout }}"
+    - name: Debug default interface
+      ansible.builtin.debug:
+        msg: "Default interface: {{ default_iface.stdout }}"
 
-# Rename the active network interface to "net0" for configuration consistency.
-- name: Rename network interface to net0
-  ansible.builtin.command:
-    cmd: "ip link set {{ default_iface.stdout }} name net0"
-    warn: false
+    # Rename the active network interface to "net0" for configuration consistency.
+    - name: Rename network interface to net0
+      ansible.builtin.shell:
+        cmd: "ip link set {{ default_iface.stdout }} name net0"
+        warn: false
+      when: default_iface.stdout != "net0"
 
-- name: Debug network interface rename
-  ansible.builtin.debug:
-    msg: "Network interface renamed to net0."
+    - name: Debug network interface rename
+      ansible.builtin.debug:
+        msg: "Network interface renamed to net0."
 
-# Display information about the renamed network interface for verification.
-- name: Show renamed interface
-  ansible.builtin.command:
-    cmd: "ip addr show net0"
-  register: interface_info
+    # Display information about the renamed network interface for verification.
+    - name: Show renamed interface
+      ansible.builtin.shell:
+        cmd: "ip addr show net0"
+      register: interface_info
 
-# Output the network interface information to the console for the user.
-- name: Output renamed interface information
-  ansible.builtin.debug:
-    var: interface_info.stdout
+    # Output the network interface information to the console for the user.
+    - name: Output renamed interface information
+      ansible.builtin.debug:
+        var: interface_info.stdout
+  rescue:
+    - name: Print when errors
+      ansible.builtin.debug:
+        msg: "Failed interface renaming"
 
 # Display CPU model and Hyper-Threading support information.
 - name: Show CPU and Hyper-Threading information
-  ansible.builtin.command:
+  ansible.builtin.shell:
     cmd: "lscpu | grep -E 'Model name|Thread(s) per core'"
   check_mode: true
   register: cpu_info
