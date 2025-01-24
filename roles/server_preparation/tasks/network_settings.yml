@@ -1,0 +1,57 @@
+---
+# Interface rename
+# It could be implemented with network-manager (nmcli ansible module),
+# but it's additional needed network-manager package
+
+- name: Gather facts about network interfaces
+  ansible.builtin.setup:
+    gather_subset:
+      - network
+
+- name: Interface renaming
+  when: interface_rename
+  block:
+
+    # Get default interface
+    - name: Debug default interface
+      ansible.builtin.debug:
+        msg: "Default interface: {{ ansible_facts['default_ipv4']['alias'] }}"
+
+    - name: Check if the new interface name already exists
+      ansible.builtin.command: "ip link show {{ new_interface_name }}"
+      register: new_interface_check
+      failed_when: false
+      changed_when: false
+
+    # Netplan rename method
+    - name: Netplan iface rename method
+      ansible.builtin.replace:
+        path: /etc/netplan/50-cloud-init.yaml
+        regexp: "{{ ansible_facts['default_ipv4']['alias'] }}"
+        replace: "{{ new_interface_name }}"
+      notify: Reboot the system
+      when: interface_rename_netplan_method
+
+    # Rename with udev method
+    - name: Create new udev rule for renaming the interface
+      ansible.builtin.blockinfile:
+        path: /etc/udev/rules.d/99-persistent-net.rules
+        create: true
+        block: |
+          # udev rule to rename network interface
+          SUBSYSTEM=="net", ACTION=="add", ATTR{address}=="{{ ansible_facts['default_ipv4']['macaddress'] }}", NAME="{{ new_interface_name }}"
+      when: new_interface_check.rc != 0 and interface_rename_udev_method
+
+    - name: Trigger udev to apply new rules
+      ansible.builtin.shell:
+        cmd: udevadm control --reload && udevadm trigger
+      when: new_interface_check.rc != 0 and interface_rename_udev_method
+
+    - name: Debug output of the renamed interface
+      ansible.builtin.debug:
+        var: verify_interface.stdout
+
+  rescue:
+    - name: Print when errors
+      ansible.builtin.debug:
+        msg: "Failed interface renaming"

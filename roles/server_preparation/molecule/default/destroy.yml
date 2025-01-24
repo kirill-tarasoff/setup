@@ -1,8 +1,0 @@
----
-- name: Destroy
-  hosts: localhost
-  tasks:
-    - name: Stop and remove docker container
-      community.docker.docker_container:
-        name: molecule_instance
-        state: absent

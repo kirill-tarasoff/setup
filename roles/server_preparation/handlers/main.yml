@@ -1,6 +1,5 @@
 ---
-# Handlers for the role
-- name: Restart networking
-  ansible.builtin.service:
-    name: network
-    state: restarted
+- name: Reboot the system
+  ansible.builtin.reboot:
+    reboot_timeout: 300
+    msg: "System is rebooting after updates."

@@ -1,0 +1,46 @@
+---
+# Ensure encryption variables are set before proceeding with encryption tasks
+- name: Check if encryption variables are set
+  ansible.builtin.debug:
+    msg: "Encryption variables are not set. Skipping encryption tasks."
+  when: "disk_to_encrypt == false and partition_to_encrypt == false"
+
+# Conditional tasks for disk encryption
+- name: Ensure disk encryption is set
+  when: disk_to_encrypt != false
+  block:
+    - name: Ensure disk encryption with LUKS
+      community.crypto.luks_device:
+        name: "encrypted_disk"
+        device: "{{ disk_to_encrypt }}"
+        state: opened
+        passphrase: "{{ encrypt_pass }}"
+
+    - name: Create filesystem on encrypted disk
+      ansible.builtin.filesystem:
+        fstype: ext4
+        dev: "/dev/mapper/encrypted_disk"
+  rescue:
+    - name: Print when errors
+      ansible.builtin.debug:
+        msg: "Failed disk encryption"
+
+# Conditional tasks for partition encryption
+- name: Ensure partition encryption is set
+  when: partition_to_encrypt != false
+  block:
+    - name: Ensure partition encryption with LUKS
+      community.crypto.luks_device:
+        name: "encrypted_partition"
+        device: "{{ partition_to_encrypt }}"
+        state: opened
+        passphrase: "{{ encrypt_pass }}"
+
+    - name: Create filesystem on encrypted partition
+      ansible.builtin.filesystem:
+        fstype: ext4
+        dev: "/dev/mapper/encrypted_partition"
+  rescue:
+    - name: Print when errors
+      ansible.builtin.debug:
+        msg: "Failed partition encryption"

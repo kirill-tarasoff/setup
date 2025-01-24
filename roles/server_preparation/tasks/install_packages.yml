@@ -1,0 +1,15 @@
+---
+# Install necessary packages for encryption, disk operations, and system information retrieval
+- name: Install required packages
+  ansible.builtin.package:
+    name:
+      - cryptsetup
+      - util-linux
+      - lshw
+    state: present
+  register: package_install_result
+
+- name: Check package installation result
+  ansible.builtin.debug:
+    msg: "Packages installed successfully."
+  when: package_install_result is succeeded
