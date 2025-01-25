@@ -2,13 +2,24 @@
 # Default values for role variables
 # Used when no specific values are provided in inventory
 
-disk_to_encrypt: false  # Default disk to encrypt (empty by default)
-partition_to_encrypt: false  # Default partition to encrypt (empty by default)
-
-interface_rename: true
-interface_rename_udev_method: false
-interface_rename_netplan_method: true
-
 encrypt_pass: "example_pass"
 
+disk_to_encrypt: false  # Default disk to encrypt (empty by default)
+disk_to_encrypt_name: "encrypted_disk"
+disk_to_encrypt_path: "/dev/mapper/{{ disk_to_encrypt_name }}"
+disk_to_encrypt_fs: "ext4"
+
+partition_to_encrypt: false  # Default partition to encrypt (empty by default)
+partition_to_encrypt_name: "encrypted_partition"
+partition_to_encrypt_path: "/dev/mapper/{{ partition_to_encrypt_name }}"
+partition_to_encrypt_fs: "ext4"
+partition_to_encrypt_mountpoint: "/example_mount_point"
+
+interface_rename_enable: true
+interface_rename_udev_method: false
+interface_rename_netplan_method: false
+netplan_iface_rename_config_path: "/etc/netplan/50-cloud-init.yaml"
+udev_iface_rename_config_path: "/etc/udev/rules.d/99-persistent-net.rules"
 new_interface_name: "net0"
+
+cpu_settings_apply_enable: true

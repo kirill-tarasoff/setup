@@ -6,30 +6,39 @@
     path: /etc/default/grub
   register: grub_content
 
-# Disable CPU power-saving C-states by modifying GRUB configuration.
-- name: Disable CPU C-states
-  ansible.builtin.lineinfile:
-    path: /etc/default/grub
-    regexp: '^GRUB_CMDLINE_LINUX="(.*)"'
-    line: 'GRUB_CMDLINE_LINUX="\1 intel_idle.max_cstate=0"'
-    backrefs: yes
-  when: "'intel_idle.max_cstate=0' not in (grub_content.content | b64decode)"
+- name: Apply CPU settings
+  when: cpu_settings_apply_enable and ('intel_idle.max_cstate=0' not in (grub_content.content | b64decode))
+  block:
 
-# Apply changes to GRUB to disable C-states.
-- name: Apply GRUB changes
-  ansible.builtin.shell: update-grub
+    # Disable CPU power-saving C-states by modifying GRUB configuration.
+    - name: Disable CPU C-states
+      ansible.builtin.lineinfile:
+        path: /etc/default/grub
+        regexp: '^GRUB_CMDLINE_LINUX="(.*)"'
+        line: 'GRUB_CMDLINE_LINUX="\1 intel_idle.max_cstate=0"'
+        backrefs: yes
+      when: "'intel_idle.max_cstate=0' not in (grub_content.content | b64decode)"
 
-# Check scaling_governor status
-- name: Check if scaling_governor is available
-  ansible.builtin.stat:
-    path: /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
-  register: governor_status
+    # Apply changes to GRUB to disable C-states.
+    - name: Apply GRUB changes
+      ansible.builtin.shell: update-grub
 
-# Switch CPUs from power-saving mode to performance mode if applicable.
-- name: Set CPU to performance mode
-  ansible.builtin.shell:
-    cmd: "echo performance | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor"
-  when: governor_status.stat.exists
+    # Check scaling_governor status
+    - name: Check if scaling_governor is available
+      ansible.builtin.stat:
+        path: /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+      register: governor_status
+
+    # Switch CPUs from power-saving mode to performance mode if applicable.
+    - name: Set CPU to performance mode
+      ansible.builtin.shell:
+        cmd: "echo performance | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor"
+      when: governor_status.stat.exists
+
+  rescue:
+    - name: Print when errors
+      ansible.builtin.debug:
+        msg: "Failed CPU setting applying"
 
 # Display CPU model and Hyper-Threading support information.
 - name: Show CPU and Hyper-Threading information

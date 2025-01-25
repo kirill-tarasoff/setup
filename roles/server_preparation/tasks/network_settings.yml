@@ -9,7 +9,7 @@
       - network
 
 - name: Interface renaming
-  when: interface_rename
+  when: interface_rename_enable and ansible_facts['default_ipv4']['alias'] != new_interface_name
   block:
 
     # Get default interface
@@ -26,7 +26,7 @@
     # Netplan rename method
     - name: Netplan iface rename method
       ansible.builtin.replace:
-        path: /etc/netplan/50-cloud-init.yaml
+        path: "{{ netplan_iface_rename_config_path }}"
         regexp: "{{ ansible_facts['default_ipv4']['alias'] }}"
         replace: "{{ new_interface_name }}"
       notify: Reboot the system
@@ -35,7 +35,7 @@
     # Rename with udev method
     - name: Create new udev rule for renaming the interface
       ansible.builtin.blockinfile:
-        path: /etc/udev/rules.d/99-persistent-net.rules
+        path: "{{ udev_iface_rename_config_path }}"
         create: true
         block: |
           # udev rule to rename network interface

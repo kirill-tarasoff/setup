@@ -5,4 +5,5 @@ all:
       ansible_host: 18.193.141.55
       ansible_user: ubuntu
       disk_to_encrypt: "/dev/xvdf"  # Disk to encrypt, specified per host
-      #partition_to_encrypt: "/dev/xvda15"  # Partition near root to encrypt
+      partition_to_encrypt: "/dev/xvda15"  # Partition near root to encrypt
+      partition_to_encrypt_mountpoint: "/boot/efi"

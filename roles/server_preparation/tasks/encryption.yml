@@ -5,21 +5,32 @@
     msg: "Encryption variables are not set. Skipping encryption tasks."
   when: "disk_to_encrypt == false and partition_to_encrypt == false"
 
+# Check encryption status
+- name: Check if disk is already encrypted
+  command: blkid {{ disk_to_encrypt }}
+  register: disk_encryption_status
+  changed_when: false
+
+- name: Check if partition is already encrypted
+  command: blkid {{ partition_to_encrypt }}
+  register: partition_encryption_status
+  changed_when: false
+
 # Conditional tasks for disk encryption
 - name: Ensure disk encryption is set
-  when: disk_to_encrypt != false
+  when: disk_to_encrypt != false and '"crypto_LUKS" not in disk_encryption_status.stdout'
   block:
     - name: Ensure disk encryption with LUKS
       community.crypto.luks_device:
-        name: "encrypted_disk"
+        name: "{{ disk_to_encrypt_name }}"
         device: "{{ disk_to_encrypt }}"
         state: opened
         passphrase: "{{ encrypt_pass }}"
 
     - name: Create filesystem on encrypted disk
       ansible.builtin.filesystem:
-        fstype: ext4
-        dev: "/dev/mapper/encrypted_disk"
+        fstype: "{{ disk_to_encrypt_fs }}"
+        dev: "{{ disk_to_encrypt_path }}"
   rescue:
     - name: Print when errors
       ansible.builtin.debug:
@@ -27,19 +38,32 @@
 
 # Conditional tasks for partition encryption
 - name: Ensure partition encryption is set
-  when: partition_to_encrypt != false
+  when: partition_to_encrypt != false and '"crypto_LUKS" not in partition_encryption_status.stdout'
   block:
+    - name: Ensure partition is not mounted
+      mount:
+        path: "{{ partition_to_encrypt_mountpoint }}"
+        state: unmounted
+      ignore_errors: true
+
     - name: Ensure partition encryption with LUKS
       community.crypto.luks_device:
-        name: "encrypted_partition"
+        name: "{{ partition_to_encrypt_name }}"
         device: "{{ partition_to_encrypt }}"
         state: opened
         passphrase: "{{ encrypt_pass }}"
 
     - name: Create filesystem on encrypted partition
       ansible.builtin.filesystem:
-        fstype: ext4
-        dev: "/dev/mapper/encrypted_partition"
+        fstype: "{{ partition_to_encrypt_fs }}"
+        dev: "{{ partition_to_encrypt_path }}"
+
+    - name: Mount the encrypted partition
+      mount:
+        path: "{{ partition_to_encrypt_mountpoint }}"
+        src: "{{ partition_to_encrypt_path }}"
+        fstype: "{{ partition_to_encrypt_fs }}"
+        state: mounted
   rescue:
     - name: Print when errors
       ansible.builtin.debug:
